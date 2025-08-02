@@ -3,9 +3,9 @@ package broadcast
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/containerd/containerd/pkg/atomic"
 	"github.com/im-kulikov/go-bones/logger"
 	"github.com/im-kulikov/go-bones/service"
 )
@@ -16,7 +16,7 @@ type server struct {
 	service.Service
 
 	config Config
-	closed atomic.Bool
+	closed *atomic.Bool
 	action chan updatePeer
 	output chan UpdateMessage
 }
@@ -46,7 +46,7 @@ const (
 
 // New creates and initializes a new Service instance with the provided configuration and logger.
 func New(cfg Config, log *logger.Logger) Service {
-	closed := atomic.NewBool(false)
+	closed := new(atomic.Bool)
 	action := make(chan updatePeer, 10)
 	output := make(chan UpdateMessage, 10)
 
@@ -66,7 +66,7 @@ func New(cfg Config, log *logger.Logger) Service {
 }
 
 type runnerParams struct {
-	closed atomic.Bool
+	closed *atomic.Bool
 	action chan updatePeer
 	output chan UpdateMessage
 }
@@ -89,7 +89,7 @@ func runner(log *logger.Logger, rp runnerParams) service.Launcher {
 			case <-ctx.Done():
 				log.InfoContext(ctx, "try shutdown")
 
-				rp.closed.Set()
+				rp.closed.Store(true)
 				close(rp.action)
 				close(rp.output)
 

@@ -16,7 +16,7 @@ type updatePeer struct {
 
 // DelPeer removes a peer identified by the provided string from the server if it is not closed.
 func (s *server) DelPeer(peer string) {
-	if s.closed.IsSet() {
+	if s.closed.Load() {
 		return
 	}
 
@@ -25,7 +25,7 @@ func (s *server) DelPeer(peer string) {
 
 // AddPeer adds a new peer to the server's action channel with the specified writer if the server is not closed.
 func (s *server) AddPeer(peer string, writer PeerWriter) {
-	if s.closed.IsSet() {
+	if s.closed.Load() {
 		return
 	}
 

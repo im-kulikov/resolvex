@@ -39,7 +39,7 @@ func (cause UpdateCause) String() string {
 }
 
 func (s *server) Broadcast(msg UpdateMessage) {
-	if s.closed.IsSet() {
+	if s.closed.Load() {
 		return
 	}
 

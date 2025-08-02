@@ -5,12 +5,10 @@ go 1.24
 //replace github.com/im-kulikov/go-bones => ../go-bones
 
 require (
-	github.com/containerd/containerd v1.7.28
 	github.com/im-kulikov/go-bones v0.1.0-rc.1
 	github.com/jwhited/corebgp v0.8.5
 	github.com/maypok86/otter/v2 v2.2.1
 	github.com/miekg/dns v1.1.67
-	github.com/osrg/gobgp/v3 v3.37.0
 	go.uber.org/zap v1.27.0
 	go.uber.org/zap/exp v0.3.0
 	golang.org/x/net v0.42.0

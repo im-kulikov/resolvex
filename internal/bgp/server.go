@@ -50,7 +50,6 @@ func coreBGPLogger(log *logger.Logger) corebgp.Logger {
 func New(cfg Config, log *logger.Logger, rec broadcast.PeerManager) (service.Service, error) {
 	var err error
 	out := logger.Named(log, serverName)
-	run := newPlugin(logger.Named(log, pluginName), cfg.LocalPref, rec)
 
 	var rid netip.Addr
 	if rid, err = netip.ParseAddr(cfg.RouteID); err != nil {
@@ -62,6 +61,15 @@ func New(cfg Config, log *logger.Logger, rec broadcast.PeerManager) (service.Ser
 	var srv *corebgp.Server
 	if srv, err = corebgp.NewServer(rid); err != nil {
 		return nil, err
+	}
+
+	run := &plugin{
+		Config: cfg,
+		Logger: logger.Named(log, pluginName),
+
+		rid: rid,
+		srv: srv,
+		rec: rec,
 	}
 
 	for _, client := range cfg.Clients {
