@@ -2,6 +2,7 @@ package bgp
 
 import (
 	"context"
+	"encoding/binary"
 	"net"
 	"net/netip"
 	"time"
@@ -24,15 +25,36 @@ type plugin struct {
 func (p *plugin) GetCapabilities(peer bgp.PeerConfig) []bgp.Capability {
 	p.Info("peer get capabilities", logger.Any("peer", peer))
 
-	return nil
+	return []bgp.Capability{
+		// Четырёхбайтная AS-нумерация (CAP_FOUR_OCTET_AS = 65)
+		{
+			Code:  bgp.CAP_FOUR_OCTET_AS,
+			Value: binary.BigEndian.AppendUint32(nil, p.LocalAs),
+		},
+
+		// Route Refresh (CAP_ROUTE_REFRESH = 2)
+		{Code: bgp.CAP_ROUTE_REFRESH},
+
+		// Multiprotocol Extensions (CAP_MP_EXTENSIONS = 1), для IPv4 Unicast
+		// Address Family Identifier: IPv4
+		// Subsequent Address Family Identifier: Unicast
+		bgp.NewMPExtensionsCapability(bgp.AFI_IPV4, bgp.SAFI_UNICAST),
+
+		// Graceful Restart (CAP_GRACEFUL_RESTART = 64)
+		// {
+		// 	Code:  bgp.CAP_GRACEFUL_RESTART,
+		// 	Value: []byte{0x00, 0x78, 0x00, 0x00}, // примерное значение (нужна конкретизация под задачу)
+		// },
+	}
 }
 
 func (p *plugin) OnOpenMessage(
 	peer bgp.PeerConfig,
 	_ netip.Addr,
-	_ []bgp.Capability,
+	caps []bgp.Capability,
 ) *bgp.Notification {
-	p.Info("peer open message", logger.Any("peer", peer))
+	p.Info("peer open message",
+		logger.String("peer", peer.RemoteAddress.String()), logger.Any("caps", caps))
 
 	return nil
 }
@@ -42,25 +64,6 @@ func (p *plugin) newWriter(
 	writer bgp.UpdateMessageWriter,
 ) broadcast.PeerWriter {
 	return func(ctx context.Context, msg broadcast.UpdateMessage) error {
-		// removes := make([]*bgp.IPAddrPrefix, 0, len(msg.ToRemove))
-		// for _, address := range msg.ToRemove {
-		// 	removes = append(removes, bgp.NewIPAddrPrefix(32, address))
-		// }
-		//
-		// attributes := make([]bgp.PathAttributeInterface, 0, 4)
-		// attributes = append(attributes,
-		// 	bgp.NewPathAttributeOrigin(bgp.BGP_ORIGIN_ATTR_TYPE_IGP),
-		// 	bgp.NewPathAttributeAsPath([]bgp.AsPathParamInterface{}),
-		// 	bgp.NewPathAttributeNextHop("127.0.0.1"),
-		// 	bgp.NewPathAttributeLocalPref(p.ref))
-		//
-		// updates := make([]*bgp.IPAddrPrefix, 0, len(msg.ToUpdate))
-		// for _, address := range msg.ToUpdate {
-		// 	updates = append(updates, bgp.NewIPAddrPrefix(32, address))
-		// }
-		//
-		// out := bgp.NewBGPUpdateMessage(removes, attributes, updates)
-
 		updates := make([]net.IPNet, 0, len(msg.ToUpdate))
 		for _, address := range msg.ToUpdate {
 			updates = append(updates, net.IPNet{
@@ -83,7 +86,7 @@ func (p *plugin) newWriter(
 		_ = OriginINCOMPLETE
 
 		attributes := []Attribute{
-			OriginIGP,
+			OriginEGP,
 			&AttributeASPath{},
 			&AttributeNextHop{IP: net.ParseIP("127.0.0.1")},
 			&AttributeLocalPref{Pref: p.LocalPref},
@@ -141,6 +144,16 @@ func (p *plugin) OnClose(peer bgp.PeerConfig) {
 	p.rec.DelPeer(peer.RemoteAddress.String())
 
 	for _, client := range p.Clients {
+		if client != peer.RemoteAddress.String() {
+			p.Info(
+				"drop peer",
+				logger.String("peer", client),
+				logger.String("router_id", p.RouteID),
+			)
+
+			continue
+		}
+
 		// используем, чтобы отпустить FSM
 		go func() {
 			conf := bgp.PeerConfig{
@@ -149,23 +162,18 @@ func (p *plugin) OnClose(peer bgp.PeerConfig) {
 				RemoteAS:      p.RemoteAs,
 			}
 
-			p.Debug(
-				"try to drop peer",
-				logger.String("peer", client),
-				logger.String("router_id", p.RouteID),
-			)
 			if err := p.srv.DeletePeer(netip.MustParseAddr(client)); err != nil {
 				p.Error("could not drop peer", logger.String("peer", client), logger.Err(err))
 			}
 
 			time.Sleep(time.Second)
 
-			p.Debug(
+			p.Info(
 				"prepare peer",
 				logger.String("peer", client),
 				logger.String("router_id", p.RouteID),
 			)
-			if err := p.srv.AddPeer(conf, p, bgp.WithLocalAddress(p.rid), bgp.WithPassive()); err != nil {
+			if err := p.srv.AddPeer(conf, p); err != nil {
 				p.Error("could not prepare peer", logger.String("peer", client), logger.Err(err))
 			}
 		}()

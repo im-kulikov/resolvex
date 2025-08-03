@@ -15,34 +15,40 @@ type dnsResult struct {
 	TTL uint32
 }
 
-const serviceName = "resolver"
+const (
+	serviceName    = "resolver"
+	defaultTimeout = time.Second * 15
+)
 
 func New(cfg Config, log *logger.Logger, store storage.DNS) (service.Service, error) {
 	out := logger.Named(log, serviceName)
 
-	return service.NewLauncher(serviceName, func(ctx context.Context) error {
+	return service.NewLauncher(serviceName, func(top context.Context) error {
 		tick := time.NewTimer(time.Microsecond)
 		defer tick.Stop()
 
 		for {
 			select {
-			case <-ctx.Done():
-				out.InfoContext(ctx, "try gracefully shutdown")
+			case <-top.Done():
+				out.InfoContext(top, "try gracefully shutdown")
 
 				return nil
 			case <-tick.C:
 				now := time.Now()
-				out.InfoContext(ctx, "start resolving")
+
+				ctx, cancel := context.WithTimeout(top, defaultTimeout)
+
+				out.DebugContext(top, "start resolving")
 
 				cnt, err := cfg.resolveDomains(ctx, out, store)
 				if err != nil {
-					out.ErrorContext(ctx, "could not resolve", logger.Err(err))
+					out.ErrorContext(top, "could not resolve", logger.Err(err))
+				} else {
+					out.InfoContext(top, "resolve done",
+						logger.Int("domains", int(cnt)),
+						logger.Any("spent", time.Since(now)))
 				}
-
-				out.InfoContext(ctx, "stop resolving",
-					logger.Int("count", int(cnt)),
-					logger.Any("spent", time.Since(now)))
-
+				cancel()
 				tick.Reset(cfg.Timeout)
 			}
 		}

@@ -7,11 +7,7 @@ type BGP interface {
 	IPsList() []string
 }
 
-// IPsList retrieves a list of IP addresses from the store with positive counters, ensuring thread-safe access.
-func (s *store) IPsList() []string {
-	s.ipItems.RLock()
-	defer s.ipItems.RUnlock()
-
+func (s *store) getIPList() []string {
 	result := make([]string, 0, len(s.ipItems.list))
 	for address, counter := range s.ipItems.list {
 		if counter <= 0 {
@@ -22,4 +18,12 @@ func (s *store) IPsList() []string {
 	}
 
 	return result
+}
+
+// IPsList retrieves a list of IP addresses from the store with positive counters, ensuring thread-safe access.
+func (s *store) IPsList() []string {
+	s.ipItems.RLock()
+	defer s.ipItems.RUnlock()
+
+	return s.getIPList()
 }

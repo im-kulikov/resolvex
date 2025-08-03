@@ -21,7 +21,7 @@ type Config struct {
 	Address    string           `env:"ADDRESS"    default:":51179"`
 	RouteID    string           `env:"ROUTER_ID"  default:"127.0.0.1"`
 	LocalAs    uint32           `env:"LOCAL_AS"   default:"65001"`
-	RemoteAs   uint32           `env:"REMOTE_AS"  default:"65001"`
+	RemoteAs   uint32           `env:"REMOTE_AS"  default:"65000"`
 	LocalPref  uint32           `env:"LOCAL_PREF" default:"100"`
 	Attributes broadcast.Config `env:"ATTRIBUTES"`
 }
@@ -80,7 +80,7 @@ func New(cfg Config, log *logger.Logger, rec broadcast.PeerManager) (service.Ser
 		}
 
 		out.Debug("prepare peer", logger.Any("peer", conf), logger.String("router_id", cfg.RouteID))
-		if err = srv.AddPeer(conf, run, corebgp.WithLocalAddress(rid), corebgp.WithPassive()); err != nil {
+		if err = srv.AddPeer(conf, run); err != nil {
 			return nil, err
 		}
 	}

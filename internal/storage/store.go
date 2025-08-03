@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/im-kulikov/go-bones"
 	"github.com/im-kulikov/go-bones/logger"
 	"github.com/maypok86/otter/v2"
@@ -48,6 +49,8 @@ type store struct {
 // cleanDomainListener defines a function type handling deletion events for domain-related items.
 type cleanDomainListener func(e otter.DeletionEvent[string, Item])
 
+type Option func(options *otter.Options[string, Item])
+
 const (
 	// serviceName defines the name of the service as "repository".
 	serviceName = "repository"
@@ -63,11 +66,13 @@ const (
 // Removed IPs are then broadcast via the specified broadcast.Broadcaster.
 func toRemoveDomains(
 	log *logger.Logger,
-	store *ipStorage,
-	manager broadcast.Broadcaster,
+	ips *ipStorage,
+	// manager broadcast.Broadcaster,
 ) cleanDomainListener {
 	return func(event otter.DeletionEvent[string, Item]) {
-		var removed []string
+		ips.Lock()
+		defer ips.Unlock()
+
 		log.Debug("record was replaced or removed",
 			logger.String("domain", event.Key),
 			logger.String("cause", event.Cause.String()))
@@ -76,37 +81,52 @@ func toRemoveDomains(
 			return
 		}
 
-		store.Lock()
-		for _, address := range event.Value.Record {
-			if val, ok := store.list[address]; !ok {
-				continue
-			} else if val -= 1; val > 0 {
-				store.list[address] = val
-				continue
-			}
+		panic(event.Cause)
 
-			delete(store.list, address)
-			removed = append(removed, address)
-		}
-		store.Unlock()
-
-		if len(removed) > 0 {
-			manager.Broadcast(
-				broadcast.UpdateMessage{ToRemove: removed, Cause: broadcast.CauseRemoval},
-			)
-		}
+		// var removed []string
+		// for _, address := range event.Value.Record {
+		// 	if val, ok := ips.list[address]; !ok {
+		// 		continue
+		// 	} else if val -= 1; val > 0 {
+		// 		ips.list[address] = val
+		// 		continue
+		// 	}
+		//
+		// 	delete(ips.list, address)
+		// 	removed = append(removed, address)
+		// }
+		//
+		// if len(removed) > 0 {
+		// 	slices.Sort(removed)
+		// 	manager.Broadcast(broadcast.UpdateMessage{ToRemove: removed, Cause: broadcast.CauseRemoval})
+		// }
+		//
+		// (&store{ipItems: ips}).validate(toRemoveDomains)
 	}
 }
 
 // New creates and initializes a new Repository with the provided logger, broadcaster, and a list of domains.
 // Returns the initialized Repository or an error if the initialization fails.
-func New(log *logger.Logger, manager broadcast.Broadcaster, domains []string) (Repository, error) {
+func New(
+	log *logger.Logger,
+	manager broadcast.Broadcaster,
+	domains []string,
+	options ...Option,
+) (Repository, error) {
 	var err error
 	out := logger.Named(log, serviceName)
 	ips := &ipStorage{list: make(map[string]int)}
 
+	var opts otter.Options[string, Item]
+	for _, o := range options {
+		o(&opts)
+	}
+
+	// rewrite a deletion function
+	opts.OnDeletion = toRemoveDomains(out, ips)
+
 	var res *otter.Cache[string, Item]
-	if res, err = otter.New(&otter.Options[string, Item]{OnDeletion: toRemoveDomains(out, ips, manager)}); err != nil {
+	if res, err = otter.New(&opts); err != nil {
 		return nil, fmt.Errorf("could not create Domain storage: %w", err)
 	}
 
@@ -120,4 +140,31 @@ func New(log *logger.Logger, manager broadcast.Broadcaster, domains []string) (R
 		domains: res,
 		manager: manager,
 	}, nil
+}
+
+func (s *store) validate(where any) error {
+	list := make(map[string]struct{})
+	lost := make(map[string]struct{})
+	for _, address := range s.getIPList() {
+		list[address] = struct{}{}
+		lost[address] = struct{}{}
+	}
+
+	find := make(map[string]struct{})
+	for item := range s.domains.Values() {
+		for address := range item.ext {
+			if _, ok := list[address]; ok {
+				delete(lost, address)
+			} else {
+				find[address] = struct{}{}
+			}
+		}
+	}
+
+	if len(lost) > 0 || len(find) > 0 {
+		return fmt.Errorf("found problem => Cause: %v, Lost: %s, Find: %s",
+			where, spew.Sdump(lost), spew.Sdump(find))
+	}
+
+	return nil
 }

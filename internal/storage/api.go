@@ -5,6 +5,7 @@ import (
 	"iter"
 	"slices"
 
+	"github.com/im-kulikov/go-bones/logger"
 	"github.com/maypok86/otter/v2"
 
 	"github.com/im-kulikov/resolvex/internal/broadcast"
@@ -37,8 +38,15 @@ func (s *store) Create(domain string) error {
 
 		return Item{Domain: domain}, otter.WriteOp
 	})
+	if err != nil {
+		return err
+	}
 
-	return err
+	if err = s.validate("Create"); err != nil {
+		s.Error("validate failed", logger.Err(err))
+	}
+
+	return nil
 }
 
 // Delete removes the specified domain from the store along with associated IPs, broadcasting updates for removed IPs.
@@ -79,7 +87,13 @@ func (s *store) Delete(domain string) error {
 	}
 
 	if len(msg.ToRemove) != 0 {
+		slices.Sort(msg.ToUpdate)
+		slices.Sort(msg.ToRemove)
 		s.manager.Broadcast(msg)
+	}
+
+	if err = s.validate("Delete"); err != nil {
+		s.Error("validate failed", logger.Err(err))
 	}
 
 	return nil
@@ -127,8 +141,28 @@ func (s *store) Update(oldDomain, newDomain string) error {
 		return err
 	}
 
+	s.domains.Compute(newDomain, func(oldValue Item, found bool) (Item, otter.ComputeOp) {
+		if found {
+			err = fmt.Errorf("%w: %s", ErrExist, newDomain)
+
+			return Item{}, otter.CancelOp
+		}
+
+		return Item{Domain: newDomain}, otter.WriteOp
+	})
+
+	if err != nil {
+		return err
+	}
+
 	if len(msg.ToRemove) != 0 {
+		slices.Sort(msg.ToUpdate)
+		slices.Sort(msg.ToRemove)
 		s.manager.Broadcast(msg)
+	}
+
+	if err = s.validate("Update"); err != nil {
+		s.Error("validate failed", logger.Err(err))
 	}
 
 	return nil

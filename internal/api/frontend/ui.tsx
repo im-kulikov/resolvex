@@ -7,6 +7,14 @@ interface Item {
     expire: null | Date;
 }
 
+type AlertType = 'success' | 'danger';
+
+interface Alert {
+    id: Date;
+    type: AlertType;
+    message: string | Error;
+}
+
 // Store a copy of the fetch function
 const _oldFetch = fetch;
 
@@ -43,10 +51,12 @@ window.fetch = function(){
 function Page() {
     const [items, setItems] = useState([] as Item[]);
     const [value, setValue] = useState("")
+    const [filter, setFilter] = useState("")
     const [uniqIPs, setUniqIPs] = useState(0)
     const [domains, setDomains] = useState(0)
     const [total, setTotal] = useState(0)
     const [loading, setLoading] = useState(0)
+    const [alerts, setAlerts] = useState([] as Alert[])
     // @ts-ignore
     const [listUniqIPS, setListUniqIPS] = useState<Map<string, number>>(new Map());
 
@@ -133,9 +143,7 @@ function Page() {
             setUniqIPs(uniqIPs.size)
             setListUniqIPS(uniques)
             setDomains(uniqDomains.size)
-        }).catch(err => {
-            alert(`Error fetchData: ${err}`)
-        })
+        }).catch(err => pushAlert("danger", err))
     }
 
     const remove = (domain : string ) => {
@@ -144,13 +152,15 @@ function Page() {
         fetch(`/api/${domain}`, { method: 'DELETE' })
             .then(data => {
                 if (data.ok) {
+                    pushAlert("success", "Успешно удалён")
+
                     return fetchData()
                 }
 
                 return data.text().then(text => {
                     throw new Error(text || "Server error")
                 })
-            }).catch(alert)
+            }).catch(err => pushAlert("danger", err))
     }
 
     const edit = (domain : string) => {
@@ -162,13 +172,15 @@ function Page() {
                 body: JSON.stringify({ domain: newDomain }),
             }).then(res => {
                 if (res.ok) {
+                    pushAlert("success", "Успешно изменён")
+
                     return fetchData();
                 }
 
                 return res.text().then(text => {
                     throw new Error(text || "Server error")
                 })
-            }).catch(alert)
+            }).catch(err => pushAlert("danger", err))
         }
     }
 
@@ -181,13 +193,49 @@ function Page() {
             body: JSON.stringify({ domain: value }),
         }).then(res => {
             if (res.ok) {
+                setValue("")
+                // @ts-ignore
+                event.target.reset()
+
+                pushAlert("success", "Успешно добавлен")
+
                 return fetchData()
             }
 
             return res.text().then(text => {
                 throw new Error(text || "Server error")
             })
-        }).catch(alert)
+        }).catch(err => pushAlert("danger", err))
+    }
+
+    // Добавить уведомление
+    const pushAlert = (type: AlertType, message: any) => {
+        const id = Date.now(); // Уникальный ID
+
+        setAlerts(prev => [...prev, {id: id, type: type, message: message}]);
+
+        // Удаление через 5 секунд
+        setTimeout(() => {
+            setAlerts(prev => prev.filter(n => n.id !== id));
+        }, 5000);
+    };
+
+    const getMessage = (item : Alert): string =>  {
+        const raw = item.message instanceof Error ? item.message.message : item.message;
+
+        try {
+            const parsed = JSON.parse(raw);
+
+            if (typeof parsed === 'object' && parsed !== null) {
+                const code = parsed.code ?? 'Unknown';
+                const text = parsed.message ?? JSON.stringify(parsed);
+                return `[${code}] ${text}`;
+            }
+
+            return raw;
+        } catch {
+            return raw;
+        }
     }
 
     useEffect(() => {
@@ -218,7 +266,7 @@ function Page() {
         <form className="needs-validation position-relative" noValidate onSubmit={onSubmit}>
             <div className="input-group has-validation">
                 <button className="btn btn-success" type="button" onClick={fetchData}>&#8635;</button>
-                <button className="btn btn-warning" type="button" onClick={fetchAndDownload}> ↓㆔ </button>
+                <button className="btn btn-warning" type="button" onClick={fetchAndDownload}> ↓㆔</button>
                 <label className="input-group-text" htmlFor="domain-name">
                     <div className={`spinner-border text-success ${loading <= 0 ? "d-none" : ""}`} role="status">
                         <span className="visually-hidden">Loading...</span>
@@ -233,8 +281,8 @@ function Page() {
                        placeholder="Введите значение"
                        onChange={
                            // @ts-ignore
-                            (event: React.FormEvent) => setValue(event.target.value)
-                        }
+                           (event: React.FormEvent) => setValue(event.target.value)
+                       }
                 />
                 <input type="submit" className="btn btn-primary" value=" 💾 "/>
                 <div className="invalid-tooltip">
@@ -242,6 +290,33 @@ function Page() {
                 </div>
             </div>
         </form>
+
+        <div className="mt-3">
+            <svg xmlns="http://www.w3.org/2000/svg" className="d-none">
+                <symbol id="check-circle-fill" viewBox="0 0 16 16">
+                    <path
+                        d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+                </symbol>
+                <symbol id="info-fill" viewBox="0 0 16 16">
+                    <path
+                        d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
+                </symbol>
+                <symbol id="exclamation-triangle-fill" viewBox="0 0 16 16">
+                    <path
+                        d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/>
+                </symbol>
+            </svg>
+
+            {alerts?.map((item: Alert) => (
+                <div key={item.id} className={`alert alert-${item.type} d-flex align-items-center`} role="alert">
+                    <svg className="bi flex-shrink-0 me-2" role="img" aria-label={`${item.type}:`}>
+                        {item.type == "success" && (<use href="#check-circle-fill"/>)}
+                        {item.type == "danger" && (<use href="#exclamation-triangle-fill"/>)}
+                    </svg>
+                    <div>{getMessage(item)}</div>
+                </div>
+            ))}
+        </div>
 
         <table className="table table-bordered table-hover caption-top w-full" id="cache-table">
             <caption>
@@ -253,6 +328,17 @@ function Page() {
                         <strong>Доменов (проверенных / всего):</strong> {domains} / {items?.length ?? 0}
                     </div>
                 </div>
+                <div className="input-group">
+                    <label className="input-group-text" htmlFor="tableFilter">Фильтр</label>
+                    <input type="text"
+                           className="form-control"
+                           placeholder="Введите для фильтрации"
+                           onChange={
+                               // @ts-ignore
+                               (event: React.FormEvent) => setFilter(event.target.value)
+                           }
+                    />
+                </div>
             </caption>
             <thead className="table-warning align-middle">
             <tr>
@@ -260,30 +346,34 @@ function Page() {
                     <span className="text-nowrap">Домен</span>
                 </th>
                 <th className="w-auto text-center text-nowrap">Обновится</th>
-                <th className="w-auto text-center text-nowrap" title='IP адреса (уникальные / всего)'>IPs<br /> (u / a)</th>
-                <th className="w-auto text-center text-nowrap"> 🛠 </th>
+                <th className="w-auto text-center text-nowrap" title='IP адреса (уникальные / всего)'>IPs<br/> (u / a)
+                </th>
+                <th className="w-auto text-center text-nowrap"> 🛠</th>
             </tr>
             </thead>
             <tbody className="">
-            {items && items.map(item => (<tr key={item.domain}>
-                <td className="w-40 text-nowrap" style={{overflow: "hidden", textOverflow: "ellipsis"}}>{item.domain}</td>
-                <td className="w-15 text-center">{item.expire ? (new Date(item.expire)).toLocaleString('ru-RU', {}) : "—"}</td>
-                <td className="w-10 text-center text-nowrap" title={item.record && item.record.join(",")}>
-                    {item.record?.filter((key) => listUniqIPS?.get(key) <= 1).length || 0}
-                    <span> / </span>
-                    {item.record?.length || 0}
-                </td>
-                <td className="w-15 text-center text-nowrap">
-                    <div className="input-group" style={{minWidth: '70px'}}>
-                        <button type="button" className="form-control btn btn-warning btn-sm" onClick={() => {
-                            edit(item.domain)
-                        }}><span style={{transform: 'scaleX(-1)'}}>&#9998;</span></button>
-                        <button type="button" className="form-control btn btn-danger btn-sm" onClick={() => {
-                            remove(item.domain)
-                        }}>&#x2715;</button>
-                    </div>
-                </td>
-            </tr>))}
+            {items && items.map(item => {
+                return (!filter || item.domain.includes(filter)) && (<tr key={item.domain}>
+                    <td className="w-40 text-nowrap"
+                        style={{overflow: "hidden", textOverflow: "ellipsis"}}>{item.domain}</td>
+                    <td className="w-15 text-center">{item.expire ? (new Date(item.expire)).toLocaleString('ru-RU', {}) : "—"}</td>
+                    <td className="w-10 text-center text-nowrap" title={item.record && item.record.join(",")}>
+                        {item.record?.filter((key) => listUniqIPS?.get(key) <= 1).length || 0}
+                        <span> / </span>
+                        {item.record?.length || 0}
+                    </td>
+                    <td className="w-15 text-center text-nowrap">
+                        <div className="input-group" style={{minWidth: '70px'}}>
+                            <button type="button" className="form-control btn btn-warning btn-sm" onClick={() => {
+                                edit(item.domain)
+                            }}><span style={{transform: 'scaleX(-1)'}}>&#9998;</span></button>
+                            <button type="button" className="form-control btn btn-danger btn-sm" onClick={() => {
+                                remove(item.domain)
+                            }}>&#x2715;</button>
+                        </div>
+                    </td>
+                </tr>)
+            })}
             </tbody>
         </table>
     </div>);

@@ -124,7 +124,7 @@ func (c *Config) resolveDomains(
 
 	inc := new(atomic.Int32)
 	cli := resolveParams{cnt: new(atomic.Int32), out: make(chan dnsResult, 1000), Logger: log}
-	for _, domain := range store.Domains() {
+	for _, domain := range store.ExpiredDomains() {
 		inc.Add(1)
 
 		log.DebugContext(ctx, "run resolve for domain",
