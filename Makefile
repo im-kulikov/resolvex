@@ -31,6 +31,12 @@ lint: ## Run Golang linters aggregator
 	$(info $(M) running linters...)
 	@golangci-lint run -v --timeout 5m0s ./...
 
+.PHONY: image
+image: IMG=ghcr.io/im-kulikov/resolvex
+image: TAG=v0.1.0-rc.4
+image: ## Creates and push image to Github packages
+	docker build  --platform linux/arm64 --push -t $(IMG):$(TAG)  -t $(IMG):latest .
+
 .PHONY: test
 test: MIN_COVERAGE = 70
 test: ## Run all tests (pass package as argument if you want test specific one)
