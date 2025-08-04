@@ -46,9 +46,6 @@ type store struct {
 	manager broadcast.Broadcaster
 }
 
-// cleanDomainListener defines a function type handling deletion events for domain-related items.
-type cleanDomainListener func(e otter.DeletionEvent[string, Item])
-
 type Option func(options *otter.Options[string, Item])
 
 const (
@@ -60,50 +57,6 @@ const (
 	// ErrNotFound represents an error indicating that the entity was not found.
 	ErrNotFound bones.Error = "not found"
 )
-
-// toRemoveDomains processes domain deletion events to update IP storage and broadcast removed IPs.
-// It adjusts the reference count for each IP and removes those with zero references.
-// Removed IPs are then broadcast via the specified broadcast.Broadcaster.
-func toRemoveDomains(
-	log *logger.Logger,
-	ips *ipStorage,
-	// manager broadcast.Broadcaster,
-) cleanDomainListener {
-	return func(event otter.DeletionEvent[string, Item]) {
-		ips.Lock()
-		defer ips.Unlock()
-
-		log.Debug("record was replaced or removed",
-			logger.String("domain", event.Key),
-			logger.String("cause", event.Cause.String()))
-
-		if event.Cause != otter.CauseExpiration {
-			return
-		}
-
-		panic(event.Cause)
-
-		// var removed []string
-		// for _, address := range event.Value.Record {
-		// 	if val, ok := ips.list[address]; !ok {
-		// 		continue
-		// 	} else if val -= 1; val > 0 {
-		// 		ips.list[address] = val
-		// 		continue
-		// 	}
-		//
-		// 	delete(ips.list, address)
-		// 	removed = append(removed, address)
-		// }
-		//
-		// if len(removed) > 0 {
-		// 	slices.Sort(removed)
-		// 	manager.Broadcast(broadcast.UpdateMessage{ToRemove: removed, Cause: broadcast.CauseRemoval})
-		// }
-		//
-		// (&store{ipItems: ips}).validate(toRemoveDomains)
-	}
-}
 
 // New creates and initializes a new Repository with the provided logger, broadcaster, and a list of domains.
 // Returns the initialized Repository or an error if the initialization fails.
@@ -121,9 +74,6 @@ func New(
 	for _, o := range options {
 		o(&opts)
 	}
-
-	// rewrite a deletion function
-	opts.OnDeletion = toRemoveDomains(out, ips)
 
 	var res *otter.Cache[string, Item]
 	if res, err = otter.New(&opts); err != nil {

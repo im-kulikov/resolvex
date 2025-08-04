@@ -109,7 +109,6 @@ func (s *store) Publish(domains []PublishItem) {
 				}
 
 				if val, ok := s.ipItems.list[address]; ok && val > 1 {
-					lst[address] = expires
 					s.ipItems.list[address] -= 1
 					continue
 				}

@@ -285,22 +285,20 @@ func Test_publishSuccess(t *testing.T) {
 	now := time.Now()
 	ips := make(map[string]time.Time)
 	for i := range 100 {
-		out := make([]string, 0, 100*i)
+		out := make([]string, 0, 10*i)
 		lst := make(map[string]time.Time)
 		for j := range 10 {
-			for k := range 5 {
-				one := now.Add(time.Second * 2)
-				num := 127<<24 + i<<16 + k<<4 + j + 1
-				adr := net.IP(binary.BigEndian.AppendUint32(nil, uint32(num))).String()
-				if _, ok := lst[adr]; ok {
-					continue
-				}
-
-				out = append(out, adr)
-
-				lst[adr] = one
-				ips[adr] = one
+			one := now.Add(time.Second * 2)
+			num := 127<<24 + i<<16 + (i+j)<<4 + j + 1
+			adr := net.IP(binary.BigEndian.AppendUint32(nil, uint32(num))).String()
+			if _, ok := lst[adr]; ok {
+				continue
 			}
+
+			out = append(out, adr)
+
+			lst[adr] = one
+			ips[adr] = one
 		}
 
 		if updates, removes := out, getOutdated(ips); len(updates) > 0 || len(removes) > 0 {
